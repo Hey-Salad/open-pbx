@@ -247,7 +247,7 @@ class AsteriskManager extends EventEmitter implements IAsteriskManager {
           priority,
           state,
           application,
-          data,
+          ,
           callerIdName,
           callerIdNum,
           duration,
@@ -332,7 +332,7 @@ class AsteriskManager extends EventEmitter implements IAsteriskManager {
 
         const parts = clean.split(/\s+/);
         if (parts.length >= 5) {
-          const [context, mailbox, _, newMessages, oldMessages] = parts;
+          const [context, mailbox, , newMessages, oldMessages] = parts;
           entries.push({
             context,
             mailbox,

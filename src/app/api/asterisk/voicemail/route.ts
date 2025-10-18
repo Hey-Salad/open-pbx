@@ -5,14 +5,11 @@ import { getAsteriskManager } from "@/lib/asterisk";
 export const runtime = "nodejs";
 
 export async function GET() {
-  try {
-    const voicemail = await getAsteriskManager().getVoicemailBoxes();
-    return NextResponse.json({ voicemail });
-  } catch (error) {
-    console.error("[API] Failed to fetch voicemail", error);
-    return NextResponse.json(
-      { message: "Unable to fetch voicemail" },
-      { status: 500 },
-    );
-  }
+  const manager = getAsteriskManager();
+  const voicemail = await manager.getVoicemailBoxes();
+  return NextResponse.json(voicemail, {
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
 }

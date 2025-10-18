@@ -6,26 +6,10 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const manager = getAsteriskManager();
-
-  try {
-    const [system, calls, extensions, voicemail] = await Promise.all([
-      manager.getSystemStatus(),
-      manager.getActiveCalls(),
-      manager.getExtensions(),
-      manager.getVoicemailBoxes(),
-    ]);
-
-    return NextResponse.json({
-      system,
-      calls,
-      extensions,
-      voicemail,
-    });
-  } catch (error) {
-    console.error("[API] Failed to load dashboard status", error);
-    return NextResponse.json(
-      { message: "Unable to load Asterisk status" },
-      { status: 500 },
-    );
-  }
+  const status = await manager.getSystemStatus();
+  return NextResponse.json(status, {
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
 }

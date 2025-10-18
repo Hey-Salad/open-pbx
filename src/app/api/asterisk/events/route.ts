@@ -1,77 +1,55 @@
 import { NextResponse } from "next/server";
 
 import { getAsteriskManager } from "@/lib/asterisk";
+import { AmiEvent } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-const sockets = new Set<WebSocket>();
-let isSubscribed = false;
+const buildEvent = (event: AmiEvent): string =>
+  `data: ${JSON.stringify(event)}\n\n`;
 
-const ensureSubscription = () => {
-  if (isSubscribed) return;
+export async function GET(request: Request) {
   const manager = getAsteriskManager();
-  manager.subscribe((event) => {
-    const payload = JSON.stringify(event);
-    for (const socket of sockets) {
-      try {
-        socket.send(payload);
-      } catch (error) {
-        console.error("[WS] Failed to deliver event", error);
-        sockets.delete(socket);
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const push = (event: AmiEvent) => {
+        controller.enqueue(encoder.encode(buildEvent(event)));
+      };
+
+      const unsubscribe = manager.subscribe(push);
+      push({
+        type: "system",
+        payload: { uptime: "Subscribed to AMI events" },
+      });
+
+      const keepAlive = setInterval(() => {
+        controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));
+      }, 15000);
+
+      if ("unref" in keepAlive && typeof keepAlive.unref === "function") {
+        keepAlive.unref();
       }
-    }
+
+      const abortHandler = () => {
+        clearInterval(keepAlive);
+        unsubscribe();
+        controller.close();
+      };
+
+      request.signal.addEventListener("abort", abortHandler);
+    },
+    cancel() {
+      // Stream cancelled by the browser.
+    },
   });
 
-  isSubscribed = true;
-};
-
-export function GET(request: Request) {
-  if (request.headers.get("upgrade") !== "websocket") {
-    return NextResponse.json(
-      { message: "Expected WebSocket upgrade" },
-      { status: 400 },
-    );
-  }
-
-  const pair = new WebSocketPair();
-  const client = pair[0];
-  const server = pair[1];
-
-  server.accept();
-  sockets.add(server);
-  ensureSubscription();
-
-  void getAsteriskManager()
-    .ready()
-    .then((ready) => {
-      if (ready) {
-        server.send(
-          JSON.stringify({
-            type: "system",
-            payload: { uptime: "Connected to Asterisk AMI" },
-          }),
-        );
-      }
-    })
-    .catch((error) => {
-      console.error("[WS] Ready check failed", error);
-      server.send(
-        JSON.stringify({
-          type: "error",
-          payload: { message: "Unable to reach Asterisk" },
-        }),
-      );
-    });
-
-  server.addEventListener("close", () => {
-    sockets.delete(server);
-  });
-  server.addEventListener("error", () => {
-    sockets.delete(server);
-  });
-
-  return new Response(null, {
-    status: 101,
-    webSocket: client,
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    },
   });
 }
